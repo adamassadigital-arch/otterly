@@ -142,24 +142,7 @@
 </main>
 
 <script>
-/* ---------------------------------------------------------------
-   FIELD MAP
-   The keys below are the property names the dashboard looks for in
-   the Otterly responses. If a chart shows "no series found", open the
-   raw response panel, find the array of daily values, and add its
-   property name to the matching list here.
----------------------------------------------------------------- */
-const FIELD_MAP = {
-  mentions:  ["brandCoverage", "coverage", "mentions", "brandMentions"],
-  citations: ["citations", "brandCitations", "citationsOverTime"],
-  sentiment: ["brandSentiment", "sentiment"],
-  citationTotal: ["totalCitations", "citationCount"],
-  // Property names that hold the value inside each daily point
-  valueKeys: ["value", "count", "brandCoverage", "coverage", "sentiment", "score", "y"],
-  // Property names that hold the date inside each daily point
-  dateKeys: ["date", "day", "x", "period"],
-};
-
+/* Field paths below match the Otterly brand report stats response. */
 const COLORS = { mentions: "#0f766e", citations: "#2563eb", sentiment: "#9333ea" };
 
 const $ = (id) => document.getElementById(id);
@@ -195,32 +178,6 @@ function shape(v, depth = 0) {
   return typeof v;
 }
 
-function findKey(obj, names, depth = 0) {
-  if (!obj || typeof obj !== "object" || depth > 8) return undefined;
-  for (const n of names) if (obj[n] !== undefined && obj[n] !== null) return obj[n];
-  for (const v of Object.values(obj)) {
-    const r = findKey(v, names, depth + 1);
-    if (r !== undefined) return r;
-  }
-  return undefined;
-}
-
-function toSeries(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .map((it) => {
-      if (typeof it !== "object" || it === null) return null;
-      const date = FIELD_MAP.dateKeys.map((k) => it[k]).find((v) => v !== undefined);
-      const value = FIELD_MAP.valueKeys.map((k) => it[k]).find((v) => typeof v === "number");
-      return date && typeof value === "number" ? { date: String(date).slice(0, 10), value } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-const seriesOf = (obj, key) => toSeries(findKey(obj, FIELD_MAP[key]));
-const sum = (s) => s.reduce((a, p) => a + p.value, 0);
-const avg = (s) => (s.length ? sum(s) / s.length : null);
 const fmt = (n) => (n === null || n === undefined || Number.isNaN(n) ? "—" : Math.round(n).toLocaleString());
 
 async function api(params) {
@@ -238,12 +195,37 @@ async function api(params) {
   return data;
 }
 
+/* ---------- parsers for the real response shape ---------- */
+
+// The main brand's own row (not the total across all tracked brands)
+function mainBrandRow(stats) {
+  const rows =
+    stats?.competitorBrandsAnalysis?.brandMentions ||
+    stats?.allBrandsAnalysis?.brandMentions || [];
+  return rows.find((b) => b.isMainBrand) || null;
+}
+
+// Daily history: each day holds a list (brands or domains); pick the main one
+function historyFor(stats, listKey, rowKey, valueKey) {
+  const days = stats?.allBrandsAnalysis?.[listKey];
+  if (!Array.isArray(days)) return [];
+  return days
+    .map((d) => {
+      const row = (d[rowKey] || []).find((x) => x.isMainBrand);
+      return row && typeof row[valueKey] === "number" ? { date: d.date, value: row[valueKey] } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const sum = (s) => s.reduce((a, p) => a + p.value, 0);
+
 /* ---------- charts ---------- */
-function drawChart(canvasId, key, series, label) {
-  const note = $(`note${key[0].toUpperCase()}${key.slice(1)}`);
-  note.textContent = series.length ? "" : "No daily series found in the response. Check the raw response panel.";
+function drawChart(key, series, label, note) {
+  const noteEl = $(`note${key[0].toUpperCase()}${key.slice(1)}`);
+  noteEl.textContent = series.length ? note : "No data for this range in the response.";
   if (charts[key]) charts[key].destroy();
-  charts[key] = new Chart($(canvasId), {
+  charts[key] = new Chart($(`chart${key[0].toUpperCase()}${key.slice(1)}`), {
     type: "line",
     data: {
       labels: series.map((p) => p.date),
@@ -261,7 +243,10 @@ function drawChart(canvasId, key, series, label) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
-      scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: key !== "sentiment" } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8 } },
+        y: { beginAtZero: key !== "sentiment" },
+      },
     },
   });
 }
@@ -300,26 +285,39 @@ async function refresh() {
       api({ action: "citations", ...base, startDate: from, endDate: to }),
     ]);
 
-    // KPI cards (current calendar month)
-    const mMentions = seriesOf(mStats, "mentions");
-    const mCitations = seriesOf(mCit, "citations");
-    const mSentiment = seriesOf(mStats, "sentiment");
+    // KPI cards: main brand, current calendar month
+    const main = mainBrandRow(mStats);
+    const sent = main && main.sentiment ? main.sentiment : null;
 
-    const citationsTotal = mCitations.length
-      ? sum(mCitations)
-      : findKey(mCit, FIELD_MAP.citationTotal);
+    $("kpiMentions").textContent = fmt(main ? main.mentions : null);
 
-    $("kpiMentions").textContent = fmt(mMentions.length ? sum(mMentions) : findKey(mStats, ["totalMentions"]));
-    $("kpiCitations").textContent = fmt(citationsTotal);
+    const citations = main && typeof main.domainCitations === "number" ? main.domainCitations : null;
+    $("kpiCitations").textContent = fmt(citations);
 
-    const sentAvg = avg(mSentiment);
-    $("kpiSentiment").textContent = sentAvg === null ? "—" : sentAvg.toFixed(2);
-    $("subSentiment").textContent = `Average, ${monthFrom} to ${monthTo}`;
+    if (sent) {
+      $("kpiSentiment").textContent = `${sent.nss > 0 ? "+" : ""}${sent.nss}`;
+      $("subSentiment").textContent =
+        `${sent.positive} positive · ${sent.neutral} neutral · ${sent.negative} negative`;
+    } else {
+      $("kpiSentiment").textContent = "—";
+      $("subSentiment").textContent = "Not returned for this brand";
+    }
 
-    // Charts (selected date range)
-    drawChart("chartMentions", "mentions", seriesOf(rStats, "mentions"), "Mentions");
-    drawChart("chartCitations", "citations", seriesOf(rCit, "citations"), "Citations");
-    drawChart("chartSentiment", "sentiment", seriesOf(rStats, "sentiment"), "Sentiment");
+    // Charts: selected date range
+    drawChart("mentions",
+      historyFor(rStats, "brandCoverageHistory", "brands", "coverage"),
+      "Brand coverage (%)",
+      "Daily brand coverage (%). Daily mention counts are not in this response.");
+
+    drawChart("citations",
+      historyFor(rStats, "domainCoverageHistory", "domains", "coverage"),
+      "Domain coverage (%)",
+      "Daily coverage of your domain (%).");
+
+    drawChart("sentiment",
+      historyFor(rStats, "brandPositionHistory", "brands", "position"),
+      "Average position",
+      "Daily sentiment is not in this response, so this shows average brand position.");
 
     $("raw").textContent = JSON.stringify({
       monthStats: shape(mStats),
