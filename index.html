@@ -136,7 +136,7 @@
   </section>
 
   <details>
-    <summary>Raw API response (for checking field names)</summary>
+    <summary>Raw API response (field names only)</summary>
     <pre id="raw">No data loaded yet.</pre>
   </details>
 </main>
@@ -171,12 +171,29 @@ let monthStart, today;
 const ymd = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 function showError(msg) {
   const b = $("banner");
   b.textContent = msg;
   b.classList.add("show");
 }
 function clearError() { $("banner").classList.remove("show"); }
+
+// Returns field names, types and list lengths only, never the values
+function shape(v, depth = 0) {
+  if (depth > 6) return "…";
+  if (Array.isArray(v)) {
+    return v.length ? [shape(v[0], depth + 1), `(${v.length} items)`] : "[] (empty)";
+  }
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v)) out[k] = shape(v[k], depth + 1);
+    return out;
+  }
+  return typeof v;
+}
 
 function findKey(obj, names, depth = 0) {
   if (!obj || typeof obj !== "object" || depth > 8) return undefined;
@@ -210,8 +227,13 @@ async function api(params) {
   const qs = new URLSearchParams(params).toString();
   if (cache.has(qs)) return cache.get(qs);
   const res = await fetch(`/.netlify/functions/otterly?${qs}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (e) { data = null; }
+  if (!res.ok) {
+    const detail = (data && (data.error || data.message)) || text.slice(0, 200) || "no details";
+    throw new Error(`${res.status} from ${res.url}: ${detail}`);
+  }
   cache.set(qs, data);
   return data;
 }
@@ -245,9 +267,6 @@ function drawChart(canvasId, key, series, label) {
 }
 
 /* ---------- data loading ---------- */
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-
 async function loadBrands() {
   const data = await api({ action: "reports" });
   const list = Array.isArray(data) ? data : data.data || data.items || data.reports || [];
@@ -302,9 +321,12 @@ async function refresh() {
     drawChart("chartCitations", "citations", seriesOf(rCit, "citations"), "Citations");
     drawChart("chartSentiment", "sentiment", seriesOf(rStats, "sentiment"), "Sentiment");
 
-    $("raw").textContent = JSON.stringify(
-      { monthStats: mStats, monthCitations: mCit, rangeStats: rStats, rangeCitations: rCit }, null, 2
-    ).slice(0, 60000);
+    $("raw").textContent = JSON.stringify({
+      monthStats: shape(mStats),
+      monthCitations: shape(mCit),
+      rangeStats: shape(rStats),
+      rangeCitations: shape(rCit),
+    }, null, 2);
   } catch (err) {
     showError(err.message);
   }
