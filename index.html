@@ -245,14 +245,18 @@ function drawChart(canvasId, key, series, label) {
 }
 
 /* ---------- data loading ---------- */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 async function loadBrands() {
   const data = await api({ action: "reports" });
   const list = Array.isArray(data) ? data : data.data || data.items || data.reports || [];
   if (!list.length) throw new Error("No brand reports were returned for this API key.");
   $("brand").innerHTML = list
     .map((r) => {
-      const name = r.name || r.brandName || (r.brand && r.brand.name) || r.id;
-      return `<option value="${r.id}">${name}</option>`;
+      const name = r.brand || r.reportTitle || r.id;
+      const label = r.brandDomain ? `${name} (${r.brandDomain})` : name;
+      return `<option value="${esc(r.id)}">${esc(label)}</option>`;
     })
     .join("");
 }
