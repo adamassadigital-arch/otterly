@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Otterly Brand Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --text: #1b1f24;
+      --muted: #6b7280;
+      --border: #e3e6eb;
+      --accent: #0f766e;
+      --accent-2: #2563eb;
+      --accent-3: #9333ea;
+      --error-bg: #fef2f2;
+      --error-text: #991b1b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0f1216;
+        --surface: #181c22;
+        --text: #e6e8eb;
+        --muted: #9aa3ae;
+        --border: #262c35;
+        --error-bg: #3b1212;
+        --error-text: #fecaca;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    }
+    header {
+      display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end;
+      justify-content: space-between;
+      padding: 20px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 20px; margin: 0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+    label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+    select, input {
+      font: inherit; font-size: 14px; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 140px;
+    }
+    select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .banner {
+      display: none; background: var(--error-bg); color: var(--error-text);
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;
+    }
+    .banner.show { display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 18px 20px; border-top: 4px solid var(--c);
+    }
+    .card .label { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .card .value { font-size: 34px; font-weight: 600; letter-spacing: -0.5px; }
+    .card .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+    .panel h2 { font-size: 15px; margin: 0 0 4px; }
+    .panel .note { font-size: 12px; color: var(--muted); min-height: 16px; margin-bottom: 8px; }
+    .panel .chart-wrap { position: relative; height: 260px; }
+    details { margin-top: 24px; font-size: 13px; color: var(--muted); }
+    pre {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; overflow: auto; max-height: 360px; font-size: 12px; color: var(--text);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Otterly Brand Dashboard</h1>
+  <div class="controls">
+    <label>Brand
+      <select id="brand"><option>Loading…</option></select>
+    </label>
+    <label>Country
+      <input id="country" value="us" maxlength="3" style="min-width:80px">
+    </label>
+    <label>From
+      <input id="start" type="date">
+    </label>
+    <label>To
+      <input id="end" type="date">
+    </label>
+  </div>
+</header>
+
+<main>
+  <div id="banner" class="banner"></div>
+
+  <section class="cards">
+    <div class="card" style="--c: var(--accent)">
+      <div class="label">Brand Mentions This Month</div>
+      <div class="value" id="kpiMentions">—</div>
+      <div class="sub" id="subMentions">Month to date</div>
+    </div>
+    <div class="card" style="--c: var(--accent-2)">
+      <div class="label">Brand Citations This Month</div>
+      <div class="value" id="kpiCitations">—</div>
+      <div class="sub" id="subCitations">Month to date</div>
+    </div>
+    <div class="card" style="--c: var(--accent-3)">
+      <div class="label">Brand Sentiment</div>
+      <div class="value" id="kpiSentiment">—</div>
+      <div class="sub" id="subSentiment">Average this month</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="panel">
+      <h2>Brand Mentions Over Time</h2>
+      <div class="note" id="noteMentions"></div>
+      <div class="chart-wrap"><canvas id="chartMentions"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Brand Citations Over Time</h2>
+      <div class="note" id="noteCitations"></div>
+      <div class="chart-wrap"><canvas id="chartCitations"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Brand Sentiment Over Time</h2>
+      <div class="note" id="noteSentiment"></div>
+      <div class="chart-wrap"><canvas id="chartSentiment"></canvas></div>
+    </div>
+  </section>
+
+  <details>
+    <summary>Raw API response (for checking field names)</summary>
+    <pre id="raw">No data loaded yet.</pre>
+  </details>
+</main>
+
+<script>
+/* ---------------------------------------------------------------
+   FIELD MAP
+   The keys below are the property names the dashboard looks for in
+   the Otterly responses. If a chart shows "no series found", open the
+   raw response panel, find the array of daily values, and add its
+   property name to the matching list here.
+---------------------------------------------------------------- */
+const FIELD_MAP = {
+  mentions:  ["brandCoverage", "coverage", "mentions", "brandMentions"],
+  citations: ["citations", "brandCitations", "citationsOverTime"],
+  sentiment: ["brandSentiment", "sentiment"],
+  citationTotal: ["totalCitations", "citationCount"],
+  // Property names that hold the value inside each daily point
+  valueKeys: ["value", "count", "brandCoverage", "coverage", "sentiment", "score", "y"],
+  // Property names that hold the date inside each daily point
+  dateKeys: ["date", "day", "x", "period"],
+};
+
+const COLORS = { mentions: "#0f766e", citations: "#2563eb", sentiment: "#9333ea" };
+
+const $ = (id) => document.getElementById(id);
+const charts = {};
+const cache = new Map();
+let monthStart, today;
+
+/* ---------- helpers ---------- */
+const ymd = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function showError(msg) {
+  const b = $("banner");
+  b.textContent = msg;
+  b.classList.add("show");
+}
+function clearError() { $("banner").classList.remove("show"); }
+
+function findKey(obj, names, depth = 0) {
+  if (!obj || typeof obj !== "object" || depth > 8) return undefined;
+  for (const n of names) if (obj[n] !== undefined && obj[n] !== null) return obj[n];
+  for (const v of Object.values(obj)) {
+    const r = findKey(v, names, depth + 1);
+    if (r !== undefined) return r;
+  }
+  return undefined;
+}
+
+function toSeries(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((it) => {
+      if (typeof it !== "object" || it === null) return null;
+      const date = FIELD_MAP.dateKeys.map((k) => it[k]).find((v) => v !== undefined);
+      const value = FIELD_MAP.valueKeys.map((k) => it[k]).find((v) => typeof v === "number");
+      return date && typeof value === "number" ? { date: String(date).slice(0, 10), value } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const seriesOf = (obj, key) => toSeries(findKey(obj, FIELD_MAP[key]));
+const sum = (s) => s.reduce((a, p) => a + p.value, 0);
+const avg = (s) => (s.length ? sum(s) / s.length : null);
+const fmt = (n) => (n === null || n === undefined || Number.isNaN(n) ? "—" : Math.round(n).toLocaleString());
+
+async function api(params) {
+  const qs = new URLSearchParams(params).toString();
+  if (cache.has(qs)) return cache.get(qs);
+  const res = await fetch(`/.netlify/functions/otterly?${qs}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
+  cache.set(qs, data);
+  return data;
+}
+
+/* ---------- charts ---------- */
+function drawChart(canvasId, key, series, label) {
+  const note = $(`note${key[0].toUpperCase()}${key.slice(1)}`);
+  note.textContent = series.length ? "" : "No daily series found in the response. Check the raw response panel.";
+  if (charts[key]) charts[key].destroy();
+  charts[key] = new Chart($(canvasId), {
+    type: "line",
+    data: {
+      labels: series.map((p) => p.date),
+      datasets: [{
+        label,
+        data: series.map((p) => p.value),
+        borderColor: COLORS[key],
+        backgroundColor: COLORS[key] + "22",
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { maxTicksLimit: 8 } }, y: { beginAtZero: key !== "sentiment" } },
+    },
+  });
+}
+
+/* ---------- data loading ---------- */
+async function loadBrands() {
+  const data = await api({ action: "reports" });
+  const list = Array.isArray(data) ? data : data.data || data.items || data.reports || [];
+  if (!list.length) throw new Error("No brand reports were returned for this API key.");
+  $("brand").innerHTML = list
+    .map((r) => {
+      const name = r.name || r.brandName || (r.brand && r.brand.name) || r.id;
+      return `<option value="${r.id}">${name}</option>`;
+    })
+    .join("");
+}
+
+async function refresh() {
+  clearError();
+  const reportId = $("brand").value;
+  const country = $("country").value.trim().toLowerCase() || "us";
+  const from = $("start").value;
+  const to = $("end").value;
+  if (!reportId || !from || !to) return;
+
+  const monthFrom = ymd(monthStart);
+  const monthTo = ymd(today);
+  const base = { reportId, country };
+
+  try {
+    const [mStats, mCit, rStats, rCit] = await Promise.all([
+      api({ action: "stats", ...base, startDate: monthFrom, endDate: monthTo }),
+      api({ action: "citations", ...base, startDate: monthFrom, endDate: monthTo }),
+      api({ action: "stats", ...base, startDate: from, endDate: to }),
+      api({ action: "citations", ...base, startDate: from, endDate: to }),
+    ]);
+
+    // KPI cards (current calendar month)
+    const mMentions = seriesOf(mStats, "mentions");
+    const mCitations = seriesOf(mCit, "citations");
+    const mSentiment = seriesOf(mStats, "sentiment");
+
+    const citationsTotal = mCitations.length
+      ? sum(mCitations)
+      : findKey(mCit, FIELD_MAP.citationTotal);
+
+    $("kpiMentions").textContent = fmt(mMentions.length ? sum(mMentions) : findKey(mStats, ["totalMentions"]));
+    $("kpiCitations").textContent = fmt(citationsTotal);
+
+    const sentAvg = avg(mSentiment);
+    $("kpiSentiment").textContent = sentAvg === null ? "—" : sentAvg.toFixed(2);
+    $("subSentiment").textContent = `Average, ${monthFrom} to ${monthTo}`;
+
+    // Charts (selected date range)
+    drawChart("chartMentions", "mentions", seriesOf(rStats, "mentions"), "Mentions");
+    drawChart("chartCitations", "citations", seriesOf(rCit, "citations"), "Citations");
+    drawChart("chartSentiment", "sentiment", seriesOf(rStats, "sentiment"), "Sentiment");
+
+    $("raw").textContent = JSON.stringify(
+      { monthStats: mStats, monthCitations: mCit, rangeStats: rStats, rangeCitations: rCit }, null, 2
+    ).slice(0, 60000);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+/* ---------- init ---------- */
+async function init() {
+  today = new Date();
+  monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const thirtyAgo = new Date(today); thirtyAgo.setDate(today.getDate() - 30);
+  $("start").value = ymd(thirtyAgo);
+  $("end").value = ymd(today);
+
+  ["brand", "country", "start", "end"].forEach((id) => $(id).addEventListener("change", refresh));
+
+  try {
+    await loadBrands();
+    await refresh();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
